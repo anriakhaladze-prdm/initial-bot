@@ -15,6 +15,38 @@ const app = new App({
 
 const BETBY_CHANNEL = process.env.BETBY_CHANNEL;
 
+// --------------------------------------------------------------------
+// UNIVERSAL DEBUGGER: LOG EVERYTHING + CONFIRM EVENT RECEPTION
+// --------------------------------------------------------------------
+receiver.router.post('/slack/events', express.json(), (req, res) => {
+
+    // Slack challenge handler
+    if (req.body.type === "url_verification") {
+        return res.status(200).send(req.body.challenge);
+    }
+
+    console.log("🔥 FULL RAW EVENT RECEIVED FROM SLACK:");
+    console.log(JSON.stringify(req.body, null, 2));
+
+    // Acknowledge event immediately
+    res.status(200).send();
+
+    try {
+        const event = req.body.event;
+
+        if (!event) return;
+
+        // Let’s tell Slack channel we detected something
+        app.client.chat.postMessage({
+            channel: event.channel,
+            text: `👀 *Debugger:* I detected event type=*${event.type}* subtype=*${event.subtype || "none"}*`
+        });
+
+    } catch (err) {
+        console.error("Debugger error:", err);
+    }
+});
+
 // ----------------------- SLACK URL VERIFICATION ------------------------
 receiver.app.post("/slack/events", express.json(), (req, res) => {
     if (req.body.type === "url_verification") {
