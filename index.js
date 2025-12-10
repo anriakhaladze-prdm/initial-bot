@@ -2,12 +2,12 @@ const { App, ExpressReceiver } = require("@slack/bolt");
 const express = require("express");
 const fetch = require("node-fetch");
 
-// Slack receiver (so Render can run Express)
+// Slack receiver (Express wrapper so Render works)
 const receiver = new ExpressReceiver({
     signingSecret: process.env.SLACK_SIGNING_SECRET
 });
 
-// Slack App
+// Slack app
 const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
     receiver
@@ -15,13 +15,22 @@ const app = new App({
 
 const BETBY_CHANNEL = process.env.BETBY_CHANNEL;
 
-// ----------- UTIL: Extract external_player_id from email text -------------
+// ----------------------- SLACK URL VERIFICATION ------------------------
+receiver.app.post("/slack/events", express.json(), (req, res) => {
+    if (req.body.type === "url_verification") {
+        console.log("Received Slack challenge");
+        return res.status(200).send(req.body.challenge);
+    }
+    return res.status(200).send();
+});
+
+// ----------------------- Utilities ------------------------
 function extractExternalPlayerId(body) {
     const match = body.match(/"external_player_id"\s*:\s*"([^"]+)"/);
     return match ? match[1] : null;
 }
 
-// ----------- SUMSUB: Create liveness link -------------------------------
+// ----------------------- SUMSUB ---------------------------
 async function createSumsubLiveness(externalPlayerId) {
     const url = "https://api.sumsub.com/resources/applicants/-/websdkLink";
 
@@ -43,7 +52,7 @@ async function createSumsubLiveness(externalPlayerId) {
     return data.url;
 }
 
-// ----------- INTERCOM: Send message to player ---------------------------
+// ----------------------- INTERCOM ---------------------------
 async function sendIntercomMessage(externalPlayerId, link) {
     const resp = await fetch("https://api.intercom.io/messages", {
         method: "POST",
@@ -63,7 +72,7 @@ async function sendIntercomMessage(externalPlayerId, link) {
     return resp.ok;
 }
 
-// ------------------------- SLACK EVENT: NEW MESSAGE ---------------------
+// ----------------------- SLACK EVENT LISTENER ---------------------------
 app.event("message", async ({ event, client }) => {
     if (event.channel !== BETBY_CHANNEL) return;
 
@@ -99,7 +108,7 @@ app.event("message", async ({ event, client }) => {
     });
 });
 
-// ------------------------ SLACK ACTION: YES -----------------------------
+// ----------------------- SLACK BUTTON: YES ---------------------------
 app.action("send_liveness_yes", async ({ ack, body, client }) => {
     await ack();
 
@@ -115,20 +124,17 @@ app.action("send_liveness_yes", async ({ ack, body, client }) => {
         return;
     }
 
-    // Create Sumsub link
     const link = await createSumsubLiveness(externalId);
-
-    // Send to Intercom
     await sendIntercomMessage(externalId, link);
 
     await client.chat.postMessage({
         channel: body.channel.id,
         thread_ts: body.message.ts,
-        text: `Liveness link sent to player via Intercom.`
+        text: "Liveness link sent to player via Intercom."
     });
 });
 
-// ------------------------ SLACK ACTION: NO ------------------------------
+// ----------------------- SLACK BUTTON: NO ---------------------------
 app.action("send_liveness_no", async ({ ack, body, client }) => {
     await ack();
 
@@ -139,11 +145,12 @@ app.action("send_liveness_no", async ({ ack, body, client }) => {
     });
 });
 
-// ------------------------- START EXPRESS SERVER -------------------------
+// ----------------------- ROOT ENDPOINT ---------------------------
 receiver.app.get("/", (req, res) => {
     res.send("Slack Liveness Bot Running");
 });
 
+// ----------------------- START SERVER ---------------------------
 const PORT = process.env.PORT || 3000;
 receiver.app.listen(PORT, () => {
     console.log("Bot running on port " + PORT);
