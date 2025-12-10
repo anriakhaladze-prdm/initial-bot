@@ -72,6 +72,11 @@ async function sendIntercomMessage(externalPlayerId, link) {
     return resp.ok;
 }
 
+app.event("message", async ({ event }) => {
+    console.log("DEBUG EVENT:", JSON.stringify(event, null, 2));
+});
+
+
 // ----------------------- SLACK EVENT LISTENER ---------------------------
 app.event("message", async ({ event, client }) => {
     if (event.channel !== BETBY_CHANNEL) return;
