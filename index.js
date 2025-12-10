@@ -78,11 +78,21 @@ app.event("message", async ({ event }) => {
 
 
 // ----------------------- SLACK EVENT LISTENER ---------------------------
-app.event("message", async ({ event, client }) => {
+app.event("message", { include_bot_messages: true }, async ({ event, client }) => {
+
+    console.log("EVENT RECEIVED:", event);
+
+    // Ignore messages without text (attachments only)
+    if (!event.text) return;
+
+    // Only react in the correct channel
     if (event.channel !== BETBY_CHANNEL) return;
 
-    const rawEmailText = event.text;
+    // Ignore Slack system messages that are not real messages
+    const ignoredSubtypes = ["message_changed", "message_deleted", "channel_join", "thread_broadcast"];
+    if (ignoredSubtypes.includes(event.subtype)) return;
 
+    // POST BUTTONS
     await client.chat.postMessage({
         channel: event.channel,
         thread_ts: event.ts,
@@ -99,7 +109,7 @@ app.event("message", async ({ event, client }) => {
                         type: "button",
                         text: { type: "plain_text", text: "Yes" },
                         action_id: "send_liveness_yes",
-                        value: rawEmailText
+                        value: event.text
                     },
                     {
                         type: "button",
@@ -112,6 +122,7 @@ app.event("message", async ({ event, client }) => {
         ]
     });
 });
+
 
 // ----------------------- SLACK BUTTON: YES ---------------------------
 app.action("send_liveness_yes", async ({ ack, body, client }) => {
