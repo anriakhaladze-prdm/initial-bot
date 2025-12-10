@@ -72,27 +72,25 @@ async function sendIntercomMessage(externalPlayerId, link) {
     return resp.ok;
 }
 
+// ----------------------- DEBUG RAW MESSAGE EVENTS -----------------------
 app.event("message", async ({ event }) => {
     console.log("DEBUG EVENT:", JSON.stringify(event, null, 2));
 });
 
+// ----------------------- HANDLE EMAIL APP MESSAGES ----------------------
+app.event("message.metadata_posted", async ({ event, client }) => {
+    console.log("EMAIL EVENT RECEIVED:", JSON.stringify(event, null, 2));
 
-// ----------------------- SLACK EVENT LISTENER ---------------------------
-app.event("message", { include_bot_messages: true }, async ({ event, client }) => {
-
-    console.log("EVENT RECEIVED:", event);
-
-    // Ignore messages without text (attachments only)
-    if (!event.text) return;
-
-    // Only react in the correct channel
     if (event.channel !== BETBY_CHANNEL) return;
 
-    // Ignore Slack system messages that are not real messages
-    const ignoredSubtypes = ["message_changed", "message_deleted", "channel_join", "thread_broadcast"];
-    if (ignoredSubtypes.includes(event.subtype)) return;
+    // Extract message content from Slack Email App
+    const raw =
+        event?.attachments?.[0]?.text ||
+        event?.attachments?.[0]?.fallback ||
+        event?.metadata?.event_payload?.text ||
+        event?.text ||
+        "";
 
-    // POST BUTTONS
     await client.chat.postMessage({
         channel: event.channel,
         thread_ts: event.ts,
@@ -109,7 +107,7 @@ app.event("message", { include_bot_messages: true }, async ({ event, client }) =
                         type: "button",
                         text: { type: "plain_text", text: "Yes" },
                         action_id: "send_liveness_yes",
-                        value: event.text
+                        value: raw
                     },
                     {
                         type: "button",
@@ -123,6 +121,22 @@ app.event("message", { include_bot_messages: true }, async ({ event, client }) =
     });
 });
 
+// ----------------------- NORMAL MESSAGE HANDLER (KEEP FOR FUTURE) -------
+app.event("message", { include_bot_messages: true }, async ({ event, client }) => {
+    // Ignore system messages
+    if (!event.text) return;
+    if (event.channel !== BETBY_CHANNEL) return;
+
+    const ignoredSubtypes = ["message_changed", "message_deleted", "channel_join", "thread_broadcast"];
+    if (ignoredSubtypes.includes(event.subtype)) return;
+
+    console.log("REGULAR MESSAGE EVENT:", event);
+});
+
+// ----------------------- METADATA UPDATED (FOR DEBUGGING) ----------------
+app.event("message.metadata_updated", async ({ event }) => {
+    console.log("METADATA UPDATED EVENT:", JSON.stringify(event, null, 2));
+});
 
 // ----------------------- SLACK BUTTON: YES ---------------------------
 app.action("send_liveness_yes", async ({ ack, body, client }) => {
